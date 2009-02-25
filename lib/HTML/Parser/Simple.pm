@@ -37,7 +37,7 @@ our @EXPORT = qw(
 
 );
 
-our $VERSION = '1.00';
+our $VERSION = '1.01';
 
 # -----------------------------------------------
 
@@ -1019,7 +1019,7 @@ Some people might falsely assume HTML::Parser can automatically fall back to HTM
 
 =item Carp
 
-=item Tree::DAG_Node
+=item Tree::Simple
 
 =back
 
