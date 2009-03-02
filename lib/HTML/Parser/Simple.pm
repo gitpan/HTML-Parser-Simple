@@ -37,7 +37,7 @@ our @EXPORT = qw(
 
 );
 
-our $VERSION = '1.01';
+our $VERSION = '1.02';
 
 # -----------------------------------------------
 
@@ -53,6 +53,7 @@ our $VERSION = '1.01';
 	 _input_dir  => '',
 	 _output_dir => '',
 	 _verbose    => 0,
+	 _xhtml      => 0,
 	);
 
 	sub _default_for
@@ -69,6 +70,114 @@ our $VERSION = '1.01';
 }
 
 # -----------------------------------------------
+# Create a new node to store the new tag.
+# Each node has metadata:
+# o attributes: The tag's attributes, as a string with N spaces as a prefix.
+# o content:    The content before the tag was parsed.
+# o name:       The HTML tag.
+# o node_type:  This holds 'global' before '<head>' and between '</head>'
+#               and '<body>', and after '</body>'. It holds 'head' from
+#               '<head>' to </head>', and holds 'body' from '<body>' to
+#               '</body>'. It's just there in case you need it.
+
+sub create_new_node
+{
+	my($self, $name, $attributes, $parent) = @_;
+	my($node)     = Tree::Simple -> new();
+	my($metadata) =
+	{
+		attributes => $attributes,
+		content    => [],
+		depth      => $self -> get_depth(),
+		name       => $name,
+		node_type  => $self -> get_node_type(),
+	};
+
+	return Tree::Simple -> new($metadata, $parent);
+
+} # End of create_new_node.
+
+# -----------------------------------------------
+
+sub get_current_node
+{
+	my($self) = @_;
+
+	return $$self{'_current'};
+
+} # End of get_current_node.
+
+# -----------------------------------------------
+
+sub get_depth
+{
+	my($self) = @_;
+
+	return $$self{'_depth'};
+
+} # End of get_depth.
+
+# -----------------------------------------------
+
+sub get_input_dir
+{
+	my($self) = @_;
+
+	return $$self{'_input_dir'};
+
+} # End of get_input_dir.
+
+# -----------------------------------------------
+
+sub get_node_type
+{
+	my($self) = @_;
+
+	return $$self{'_node_type'};
+
+} # End of get_node_type.
+
+# -----------------------------------------------
+
+sub get_output_dir
+{
+	my($self) = @_;
+
+	return $$self{'_output_dir'};
+
+} # End of get_output_dir.
+
+# -----------------------------------------------
+
+sub get_root
+{
+	my($self) = @_;
+
+	return $$self{'_root'};
+
+} # End of get_root.
+
+# -----------------------------------------------
+
+sub get_verbose
+{
+	my($self) = @_;
+
+	return $$self{'_verbose'};
+
+} # End of get_verbose.
+
+# -----------------------------------------------
+
+sub get_xhtml
+{
+	my($self) = @_;
+
+	return $$self{'_xhtml'};
+
+} # End of get_xhtml.
+
+# -----------------------------------------------
 
 sub handle_comment
 {
@@ -83,11 +192,11 @@ sub handle_comment
 sub handle_content
 {
 	my($self, $s)                 = @_;
-	my($count)                    = $$self{'_current'} -> getChildCount();
-	my($metadata)                 = $$self{'_current'} -> getNodeValue();
+	my($count)                    = $self -> get_current_node() -> getChildCount();
+	my($metadata)                 = $self -> get_current_node() -> getNodeValue();
 	$$metadata{'content'}[$count] .= $s;
 
-	$$self{'_current'} -> setNodeValue($metadata);
+	$self -> get_current_node() -> setNodeValue($metadata);
 
 } # End of handle_content.
 
@@ -109,14 +218,13 @@ sub handle_end_tag
 
 	if ( ($tag_name eq 'head') || ($tag_name eq 'body') )
 	{
-		$self -> node_type('global');
+		$self -> set_node_type('global');
 	}
 
 	if (! $$self{'_empty'}{$tag_name})
 	{
-		$$self{'_current'} = $$self{'_current'} -> getParent();
-
-		$$self{'_depth'}--;
+		$self -> set_current_node($self -> get_current_node() -> getParent() );
+		$self -> set_depth($self -> get_depth() - 1);
 	}
 
 } # End of handle_end_tag.
@@ -127,25 +235,35 @@ sub handle_start_tag
 {
 	my($self, $tag_name, $attributes, $unary) = @_;
 
-	$$self{'_depth'}++;
+	$self -> set_depth($self -> get_depth() + 1);
 
 	if ($tag_name eq 'head')
 	{
-		$self -> node_type('head');
+		$self -> set_node_type('head');
 	}
 	elsif ($tag_name eq 'body')
 	{
-		$self -> node_type('body');
+		$self -> set_node_type('body');
 	}
 
-	my($node) = $self -> new_node($tag_name, $attributes, $$self{'_current'});
+	my($node) = $self -> create_new_node($tag_name, $attributes, $self -> get_current_node() );
 
 	if (! $$self{'_empty'}{$tag_name})
 	{
-		$$self{'_current'} = $node;
+		$self -> set_current_node($node);
 	}
 
 } # End of handle_start_tag.
+
+# -----------------------------------------------
+
+sub handle_xml_declaration
+{
+	my($self, $s) = @_;
+
+	$self -> handle_content($s);
+
+} # End of handle_xml_declaration.
 
 # -----------------------------------------------
 
@@ -153,7 +271,7 @@ sub log
 {
 	my($self, $msg) = @_;
 
-	if ($$self{'_verbose'})
+	if ($self -> get_verbose() )
 	{
 		print STDERR "$msg\n";
 	}
@@ -234,8 +352,7 @@ sub new
 	 thead => 1,
 	 'tr' => 1,
 	};
-	$$self{'_depth'}   = 0;
-	$$self{'_empty'}   =
+	$$self{'_empty'} =
 	{
 	 area => 1,
 	 base => 1,
@@ -299,57 +416,27 @@ sub new
 	$$self{'_known_tag'} = {%{$$self{'_block'} }, %{$$self{'_close_self'} }, %{$$self{'_empty'} }, %{$$self{'_inline'} } };
 	$$self{'_result'}    = '';
 
-	$self -> node_type('global');
+	# Warning: set_depth() and set_node_type() must be called before create_new_node().
 
-	$$self{'_current'} = $self -> new_node('root', '');
+	$self -> set_depth(0);
+	$self -> set_node_type('global');
+	$self -> set_current_node($self -> create_new_node('root', '') );
+	$self -> set_root($self -> get_current_node() );
 
-	$self -> root($$self{'_current'});
+	if ($self -> get_xhtml() )
+	{
+		# Compared to the non-XHTML re, this has a extra  ':' just under the ':'.
+
+		$$self{'_tag_with_attribute'} = q#^(<(\w+)((?:\s+[-:\w]+(?:\s*=\s*(?:(?:"[^"]*")|(?:'[^']*')|[^>\s]+))?)*)\s*(\/?)>)#;
+	}
+	else
+	{
+		$$self{'_tag_with_attribute'} = q#^(<(\w+)((?:\s+[-\w]+(?:\s*=\s*(?:(?:"[^"]*")|(?:'[^']*')|[^>\s]+))?)*)\s*(\/?)>)#;
+	}
 
 	return $self;
 
 }	# End of new.
-
-# -----------------------------------------------
-# Generate a new node to store the new tag.
-# Each node has metadata:
-# o attributes: The tag's attributes, as a string with N spaces as a prefix.
-# o content:    The content before the tag was parsed.
-# o name:       The HTML tag.
-# o node_type:  This holds 'global' before '<head>' and between '</head>'
-#               and '<body>', and after '</body>'. It holds 'head' from
-#               '<head>' to </head>', and holds 'body' from '<body>' to
-#               '</body>'. It's just there in case you need it.
-
-sub new_node
-{
-	my($self, $name, $attributes, $parent) = @_;
-	my($node)     = Tree::Simple -> new();
-	my($metadata) =
-	{
-		attributes => $attributes,
-		content    => [],
-		name       => $name,
-		node_type  => $self -> node_type(),
-	};
-
-	return Tree::Simple -> new($metadata, $parent);
-
-} # End of new_node.
-
-# -----------------------------------------------
-
-sub node_type
-{
-	my($self, $type) = @_;
-
-	if ($type)
-	{
-		$$self{'_node_type'} = $type;
-	}
-
-	return $$self{'_node_type'};
-
-} # End of node_type.
 
 # -----------------------------------------------
 
@@ -397,7 +484,7 @@ sub parse
 			{
 				if (substr($html, 0, 1) eq '<')
 				{
-					if ($html =~ /^(<(\w+)((?:\s+[-\w]+(?:\s*=\s*(?:(?:"[^"]*")|(?:'[^']*')|[^>\s]+))?)*)\s*(\/?)>)/)
+					if ($html =~ /$$self{'_tag_with_attribute'}/)
 					{
 						substr($html, 0, length $1) = '';
 						$in_content                 = 0;
@@ -447,6 +534,26 @@ sub parse
 				}
 			}
 
+			# Is is an XML declaration?
+
+			if ($self -> get_xhtml() && $in_content)
+			{
+				$s = substr($html, 0, 5);
+
+				if ($s eq '<?xml')
+				{
+					$offset = index($html, '?>');
+
+					if ($offset >= 0)
+					{
+						$self -> handle_xml_declaration(substr($html, 0, ($offset + 2) ) );
+
+						substr($html, 0, $offset + 2) = '';
+						$in_content                   = 0;
+					}
+				}
+			}
+
 			if ($in_content)
 			{
 				$offset = index($html, '<');
@@ -484,18 +591,18 @@ sub parse
 		if ($html eq $original)
 		{
 			my($msg)    = 'Parse error. ';
-			my($parent) = $$self{'_current'} -> getParent();
+			my($parent) = $self -> get_current_node() -> getParent();
 
 			my($metadata);
 
-			if ($parent)
+			if ($parent && $parent -> can('getNodeValue') )
 			{
 				$metadata = $parent -> getNodeValue();
 				$msg      .= "Parent tag: <$$metadata{'name'}>. ";
 			}
 
-			$metadata = $$self{'_current'} -> getNodeValue();
-			$msg      .= "Current tag: <$$metadata{'name'}>. Next 50 chars: " . substr($html, 0, 50);
+			$metadata = $self -> get_current_node() -> getNodeValue();
+			$msg      .= "Current tag: <$$metadata{'name'}>. Next 100 chars: " . substr($html, 0, 100);
  
 			Carp::croak $msg;
 		}
@@ -564,9 +671,9 @@ sub parse_file
 {
 	my($self, $input_file_name, $output_file_name) = @_;
 
-	if ($$self{'_input_dir'})
+	if ($self -> get_input_dir() )
 	{
-		$input_file_name = File::Spec -> catfile($$self{'_input_dir'}, $input_file_name);
+		$input_file_name = File::Spec -> catfile($self -> get_input_dir(), $input_file_name);
 	}
 
 	open(INX, $input_file_name) || Carp::croak "Can't open($input_file_name): $!";
@@ -580,15 +687,15 @@ sub parse_file
 	}
 
 	$self -> parse($html);
-	$self -> traverse($self -> root() );
+	$self -> traverse($self -> get_root() );
 
-	if ($$self{'_output_dir'})
+	if ($self -> get_output_dir() )
 	{
-		$output_file_name = File::Spec -> catfile($$self{'_output_dir'}, $output_file_name);
+		$output_file_name = File::Spec -> catfile($self -> get_output_dir(), $output_file_name);
 	}
 
 	open(OUT, "> $output_file_name") || Carp::croak "Can't open(> $output_file_name): $!";
-	print OUT $self -> result();
+	print OUT $$self{'_result'};
 	close OUT;
 
 } # End of parse_file.
@@ -635,18 +742,150 @@ sub result
 
 # -----------------------------------------------
 
-sub root
+sub set_current_node
 {
 	my($self, $node) = @_;
 
-	if ($node)
+	if (! defined $node)
 	{
-		$$self{'_root'} = $node;
+		Carp::croak "set_current_node() called with undef";
 	}
 
-	return $$self{'_root'};
+	$$self{'_current'} = $node;
 
-} # End of root.
+	return;
+
+} # End of set_current_node.
+
+# -----------------------------------------------
+
+sub set_depth
+{
+	my($self, $depth) = @_;
+
+	if (! defined $depth)
+	{
+		Carp::croak "set_depth() called with undef";
+	}
+
+	$$self{'_depth'} = $depth;
+
+	return;
+
+} # End of set_depth.
+
+# -----------------------------------------------
+
+sub set_input_dir
+{
+	my($self, $input_dir) = @_;
+
+	if (! defined $input_dir)
+	{
+		Carp::croak "set_input_dir() called with undef";
+	}
+
+	$$self{'_input_dir'} = $input_dir;
+
+	return;
+
+} # End of set_input_dir.
+
+# -----------------------------------------------
+
+sub set_node_type
+{
+	my($self, $type) = @_;
+
+	if (! defined $type)
+	{
+		Carp::croak "set_node_type() called with undef";
+	}
+
+	$$self{'_node_type'} = $type;
+
+	return;
+
+} # End of set_node_type.
+
+# -----------------------------------------------
+
+sub set_output_dir
+{
+	my($self, $output_dir) = @_;
+
+	if (! defined $output_dir)
+	{
+		Carp::croak "set_output_dir() called with undef";
+	}
+
+	$$self{'_output_dir'} = $output_dir;
+
+	return;
+
+} # End of set_output_dir.
+
+# -----------------------------------------------
+
+sub set_root
+{
+	my($self, $node) = @_;
+
+	if (! defined $node)
+	{
+		Carp::croak "set_root() called with undef";
+	}
+
+	$$self{'_root'} = $node;
+
+	return;
+
+} # End of set_root.
+
+# -----------------------------------------------
+
+sub set_verbose
+{
+	my($self, $verbose) = @_;
+
+	if (! defined $verbose)
+	{
+		Carp::croak "set_verbose() called with undef";
+	}
+
+	$$self{'_verbose'} = $verbose;
+
+	return;
+
+} # End of set_verbose.
+
+# -----------------------------------------------
+
+sub set_xhtml
+{
+	my($self, $xhtml) = @_;
+
+	if (! defined $xhtml)
+	{
+		Carp::croak "set_xhtml() called with undef";
+	}
+
+	$$self{'_xhtml'} = $xhtml;
+
+	if ($self -> get_xhtml() )
+	{
+		# Compared to the non-XHTML re, this has a extra  ':' just under the ':'.
+
+		$$self{'_tag_with_attribute'} = q#^(<(\w+)((?:\s+[-:\w]+(?:\s*=\s*(?:(?:"[^"]*")|(?:'[^']*')|[^>\s]+))?)*)\s*(\/?)>)#;
+	}
+	else
+	{
+		$$self{'_tag_with_attribute'} = q#^(<(\w+)((?:\s+[-\w]+(?:\s*=\s*(?:(?:"[^"]*")|(?:'[^']*')|[^>\s]+))?)*)\s*(\/?)>)#;
+	}
+
+	return;
+
+} # End of set_xhtml.
 
 # -----------------------------------------------
 
@@ -672,14 +911,14 @@ sub traverse
 	for $index (0 .. $#child)
 	{
 		$$self{'_result'} .= $index <= $#$content && defined($$content[$index]) ? $$content[$index] : '';
-
 		$self -> traverse($child[$index]);
 	}
 
 	# Output the content after the last child node has been closed,
 	# but before the current node is closed.
 
-	$index            = $#child + 1;
+	$index = $#child + 1;
+
 	$$self{'_result'} .= $index <= $#$content && defined($$content[$index]) ? $$content[$index] : '';
 
 	if (! $$self{'_empty'}{$name} && ($name ne 'root') )
@@ -725,7 +964,7 @@ C<HTML::Parser::Simple> - Parse nice HTML files without needing a compiler
 	my($p) = HTML::Parser::Simple -> new();
 	
 	$p -> parse('<html>...</html>');
-	$p -> traverse($p -> root() );
+	$p -> traverse($p -> get_root() );
 	print $p -> result();
 
 =head1 Description
@@ -735,8 +974,6 @@ C<HTML::Parser::Simple> is a pure Perl module.
 It parses HTML V 4 files, and generates a tree of nodes per HTML tag.
 
 The data associated with each node is documented in the FAQ.
-
-Warning: Use only the documented methods.
 
 =head1 Distributions
 
@@ -785,11 +1022,76 @@ The default value is 0.
 
 Note: Currently, setting verbose does nothing.
 
+=item xhtml
+
+This takes either a 0 or a 1.
+
+0 means do not accept an XML declaration, such as <?xml version="1.0" encoding="UTF-8"?>
+at the start of the input file, and some other XHTML features.
+
+1 means accept it.
+
+The default value is 0.
+
+Warning: The only XHTML changes to this code, so far, are:
+
+=over 4
+
+=item Accept the XML declaration
+
+E.g.: <?xml version="1.0" standalone='yes'?>.
+
+=item Accept attribute names containing the ':' char
+
+E.g.: <html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">.
+
 =back
+
+=back
+
+=head1 Method: get_current_node()
+
+Returns the node which the parser calls the current node.
+
+=head1 Method: get_depth()
+
+Returns the nesting depth of the current tag.
+
+It's just there in case you need it.
+
+=head1 Method: get_input_dir()
+
+Returns the input_dir parameter, as passed in to C<new()>.
+
+=head1 Method: get_output_dir()
+
+Returns the output_dir parameter, as passed in to C<new()>.
+
+=head1 Method: get_node_type()
+
+Returns the type of the most recently created node, 'global', 'head', or 'body'.
+
+See the first question in the FAQ for details.
+
+=head1 Method: result()
+
+Returns the result so far of the parse.
+
+=head1 Method: get_root()
+
+Returns the node which the parser calls the root of the tree of nodes.
+
+=head1 Method: get_verbose()
+
+Returns the verbose parameter, as passed in to C<new()>.
+
+=head1 Method: get_xhtml()
+
+Returns the xhtml parameter, as passed in to C<new()>.
 
 =head1 Method: log($msg)
 
-Print $msg to STDERR if C<new()> was called as C<< new({verbose => 1}) >>.
+Print $msg to STDERR if C<new()> was called as C<< new({verbose => 1}) >>, or if $p -> set_verbose(1) was called.
 
 Otherwise, print nothing.
 
@@ -797,9 +1099,11 @@ Otherwise, print nothing.
 
 Parses the string of HTML in $html, and builds a tree of nodes.
 
-After calling C<< $p -> parse() >>, you must call C<< $p -> traverse($p -> root() ) >> before calling C<< $p -> result() >>.
+After calling C<< $p -> parse() >>, you must call C<< $p -> traverse($p -> get_root() ) >> before calling C<< $p -> result() >>.
 
 Alternately, call C<< $p -> parse_file() >>, which calls all these methods for you.
+
+Note: C<parse()> may be called directly or via C<parse_file()>.
 
 =head1 Method: parse_file($input_file_name, $output_file_name)
 
@@ -807,13 +1111,59 @@ Parses the HTML in the input file, and writes the result to the output file.
 
 =head1 Method: result()
 
-Returns a string which is the result of calling C<< $p -> traverse($p -> root() ) >>.
+Returns the result so far of the parse.
 
-=head1 Method: root()
+=head1 Method: set_current_node($node)
 
-Returns the root of the tree constructed by calling C<< $p -> parse() >>.
+Sets the node which the parser calls the current node.
 
-Note: C<parse()> may be called directly or via C<parse_file()>.
+Returns undef.
+
+=head1 Method: set_depth($depth)
+
+Sets the nesting depth of the current node.
+
+Returns undef.
+
+It's just there in case you need it.
+
+=head1 Method: set_input_dir($dir_name)
+
+Sets the input_dir parameter, as though it was passed in to C<new()>.
+
+Returns undef.
+
+=head1 Method: set_output_dir($dir_name)
+
+Sets the output_dir parameter, as though it was passed in to C<new()>.
+
+Returns undef.
+
+=head1 Method: set_node_type($node_type)
+
+Sets the type of the next node to be created, 'global', 'head', or 'body'.
+
+See the first question in the FAQ for details.
+
+Returns undef.
+
+=head1 Method: set_root($node)
+
+Returns the node which the parser calls the root of the tree of nodes.
+
+Returns undef.
+
+=head1 Method: set_verbose($Boolean)
+
+Sets the verbose parameter, as though it was passed in to C<new()>.
+
+Returns undef.
+
+=head1 Method: set_xhtml($Boolean)
+
+Sets the xhtml parameter, as though it was passed in to C<new()>.
+
+Returns undef.
 
 =head1 FAQ
 
@@ -821,9 +1171,7 @@ Note: C<parse()> may be called directly or via C<parse_file()>.
 
 =item What is the format of the data stored in each node of the tree?
 
-The data of each node is a hash ref:
-
-The keys/values of this hash ref are:
+The data of each node is a hash ref. The keys/values of this hash ref are:
 
 =over 4
 
@@ -862,6 +1210,14 @@ but before the current node is closed.
 
 Note: The DOCTYPE declaration is stored as the 0th element of the content of the root node.
 
+=item depth
+
+The nesting depth of the tag within the document.
+
+The root is at depth 0, '<html>' is at depth 1, '<head>' and '<body>' are a depth 2, and so on.
+
+It's just there in case you need it.
+
 =item The name the HTML tag
 
 So, the tag '<html>' will mean the name is 'html'.
@@ -885,6 +1241,10 @@ It's just there in case you need it.
 They are treated as content. This includes the prefix '<!--' and the suffix '-->'.
 
 =item How is DOCTYPE handled?
+
+It is treated as content belonging to the root of the tree.
+
+=item How is the XML declaration handled?
 
 It is treated as content belonging to the root of the tree.
 
@@ -932,9 +1292,9 @@ Reveal.pl ships with HTML::Revelation.
 
 Call the output file output.1.html.
 
-=item Run input.html thru parse.file.pl
+=item Run input.html thru parse.html.pl
 
-Parse.file.pl ships with HTML::Parser::Simple.
+Parse.html.pl ships with HTML::Parser::Simple.
 
 Call the output file parsed.html.
 
@@ -1010,6 +1370,35 @@ But the API's are not, and are not meant to be, compatible.
 Some people might falsely assume HTML::Parser can automatically fall back to HTML::Parser::PurePerl in the absence of a compiler.
 
 =back
+
+=item How do I output my own stuff while traversing the tree?
+
+=over 4
+
+=item The sophisticated way
+
+As always with OO code, sub-class! In this case, you write a new version of the traverse() method.
+
+=item The crude way
+
+Alternately, implement another method in your sub-class, e.g. process(), which recurses like traverse().
+Then call parse() and process().
+
+=back
+
+=item Is the code on github?
+
+Yes. See: git://github.com/ronsavage/html--parser--simple.git
+
+=item How is the source formatted?
+
+I edit with Emacs, using the default formatting for Perl.
+
+That means, in general, leading 4-space tabs. Hashrefs use a leading tab and then a space.
+
+All vertical alignment within lines is done manually with spaces.
+
+Perl::Critic is off the agenda.
 
 =back
 
