@@ -1,26 +1,29 @@
 ---
-name: HTML-Parser-Simple
-version: 1.03
+abstract: 'Parse nice HTML files without needing a compiler'
 author:
   - 'Ron Savage <ron@savage.net.au>'
-abstract: Parse nice HTML files without needing a compiler
-license: artistic
-resources:
-  license: http://opensource.org/licenses/artistic-license.php
-requires:
-  Carp: 0
-  Tree::Simple: 0
 build_requires:
   Test::More: 0
   Test::Pod: 0
+configure_requires:
+  Module::Build: 0.36
+generated_by: 'Module::Build version 0.3601'
+license: artistic
+meta-spec:
+  url: http://module-build.sourceforge.net/META-spec-v1.4.html
+  version: 1.4
+name: HTML-Parser-Simple
 provides:
   HTML::Parser::Simple:
     file: lib/HTML/Parser/Simple.pm
-    version: 1.03
+    version: 1.04
   HTML::Parser::Simple::Attributes:
     file: lib/HTML/Parser/Simple/Attributes.pm
-    version: 1.03
-generated_by: Module::Build version 0.280801
-meta-spec:
-  url: http://module-build.sourceforge.net/META-spec-v1.2.html
-  version: 1.2
+    version: 1.04
+requires:
+  Carp: 0
+  Tree::Simple: 0
+  perl: 5.006
+resources:
+  license: http://opensource.org/licenses/artistic-license.php
+version: 1.04
