@@ -36,7 +36,7 @@ our @EXPORT = qw(
 
 );
 
-our $VERSION = '1.04';
+our $VERSION = '1.05';
 
 # -----------------------------------------------
 
@@ -1397,16 +1397,6 @@ That means, in general, leading 4-space tabs. Hashrefs use a leading tab and the
 All vertical alignment within lines is done manually with spaces.
 
 Perl::Critic is off the agenda.
-
-=back
-
-=head1 Required Modules
-
-=over 4
-
-=item Carp
-
-=item Tree::Simple
 
 =back
 
