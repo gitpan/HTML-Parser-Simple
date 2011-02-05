@@ -36,7 +36,7 @@ our @EXPORT = qw(
 
 );
 
-our $VERSION = '1.05';
+our $VERSION = '1.06';
 
 # -----------------------------------------------
 
@@ -1177,8 +1177,8 @@ The data of each node is a hash ref. The keys/values of this hash ref are:
 
 This is the string of HTML attributes associated with the HTML tag.
 
-So, <table align = 'center' bgColor = '#80c0ff' summary = 'Body'> will have an attributes string of
-" align = 'center' bgColor = '#80c0ff' summary = 'Body'".
+So, <table align = 'center' summary = 'Body'> will have an attributes string of
+" align = 'center' summary = 'Body'".
 
 Note the leading space.
 
