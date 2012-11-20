@@ -1,38 +1,37 @@
 package HTML::Parser::Simple::Attributes;
 
-use strict;
-use warnings;
+use Moos; # Turns on strict and warnings. Provides 'has'.
 
-use Carp;
+has a_hashref => (default => sub{return {} });
+has a_string  => (default => sub{return ''});
+has parsed    => (default => sub{return 0});
 
-our $VERSION = '1.07';
+our $VERSION = '2.00';
 
 # -----------------------------------------------
 
-sub get_attr
+sub get
 {
 	my($self, $key) = @_;
 
-	# Only parse each attribute string once.
+	$self -> parse if ($self -> parsed == 0);
 
-	if (! exists $$self{attrs})
-	{
-		$$self{attrs} = $self -> parse_attributes($$self{a_string});
-	}
+	my($attrs) = $self -> a_hashref;
 
-	return $key ? $$self{attrs}{$key} : $$self{attrs};
+	return $key ? $$attrs{$key} : $$attrs;
 
-} # End of get_attr.
+} # End of get.
 
 # -----------------------------------------------
 
-sub new
+sub hashref2string
 {
-	my($class, $a_string) = @_;
+	my($self, $h) = @_;
+	$h ||= {};
 
-	return bless({a_string => $a_string}, $class);
+	return '{' . join(', ', map{"$_ => $$h{$_}"} sort keys %$h) . '}';
 
-} # End of new.
+} # End of hashref2string.
 
 # -----------------------------------------------
 
@@ -43,38 +42,66 @@ our(@quote) =
  qr{^([a-zA-Z0-9_-]+)\s*=\s*([^\s'"]+)\s*(.*)$}so,    # Unquoted.
 );
 
-sub parse_attributes
+sub parse
 {
-	my($self, $a_string) = @_;
-	$a_string  =~ s/^\s+|\s+$//g;
+	my($self, $string) = @_;
+	$string    ||= $self -> a_string;
+	$string    =~ s/^\s+|\s+$//g;
 	my($attrs) = {};
 
-	while (length $a_string)
+	$self -> a_string($string);
+
+	while (length $string)
 	{
 		my($i)        = - 1;
-		my($original) = $a_string;
+		my($original) = $string;
 
 		while ($i < $#quote)
 		{
 			$i++;
 
-			if ($a_string =~ $quote[$i])
+			if ($string =~ $quote[$i])
 			{
 				$$attrs{$1} = $2;
-				$a_string   = $3;
+				$string     = $3;
 				$i          = - 1;
 			}
 		}
 
-		if ($a_string eq $original)
-		{
-			croak "parse_attributes: can't parse $a_string - not a properly formed attribute string";
-		}
+		die "Can't parse $string - not a properly formed attribute string\n" if ($string eq $original);
 	}
+
+	$self -> a_hashref($attrs);
+	$self -> parsed(1);
 
 	return $attrs;
 
-} # End of parse_attributes.
+} # End of parse.
+
+# -----------------------------------------------
+
+sub string2hashref
+{
+	my($self, $s) = @_;
+	$s            ||= '';
+	my($result)   = {};
+
+	if ($s)
+	{
+		if ($s =~ m/^\{\s*([^}]*)\}$/)
+		{
+			my(@attr) = map{split(/\s*=>\s*/)} split(/\s*,\s*/, $1);
+			$result   = {@attr} if (@attr);
+		}
+		else
+		{
+			die "Invalid syntax for hashref: $s";
+		}
+	}
+
+	return $result;
+
+} # End of string2hashref.
 
 # -----------------------------------------------
 
@@ -82,58 +109,185 @@ sub parse_attributes
 
 =head1 NAME
 
-C<HTML::Parser::Simple::Attributes> - a simple HTML attribute parser
+C<HTML::Parser::Simple::Attributes> - A simple HTML attribute parser
 
 =head1 Synopsis
 
-Note: This module assumes the attributes belong to a start tag.
+	#!/usr/bin/env perl
 
-	my($parser) = HTML::Parser::Simple::Attributes -> new(' height="20" width="20"');
+	use strict;
+	use warnings;
+
+	use HTML::Parser::Simple::Attributes;
+
+	# -------------------------
+
+	# Method 1:
+
+	my($parser) = HTML::Parser::Simple::Attributes -> new(' height="20" width=20 ');
 
 	# Get all the attributes as a hashref.
+	# This triggers a call to parse(), if necessary.
 
-	my($attr_href) = $parser -> get_attr;
+	my($attr_href) = $parser -> get;
 
 	# Get the value of a specific attribute.
+	# This triggers a call to parse(), if necessary.
 
-	my($height) = $parser -> get_attr('height');
+	my($height) = $parser -> get('height');
+
+	# Method 2:
+
+	my($parser) = HTML::Parser::Simple::Attributes -> new;
+
+	$parser -> parse(' height="20" width=20 ');
+
+	# Get all attributes, or 1, as above.
+
+	my($attr_href) = $parser -> get;
+	my($height)    = $parser -> get('height');
+
+	# Get the attribute string passed to new() or to parse().
+
+	my($a_string) = $parser -> a_string;
+
+	# Get the parsed attributes as a hashref, if parse() has been called.
+	# If parse() has not been called, this returns {}.
+
+	my($a_hashref) = $parser -> a_hashref;
+
+
+=head1 Description
+
+C<HTML::Parser::Simple::Attributes> is a pure Perl module.
+
+It parses HTML V 4 attribute strings, and turns them into a hashrefs.
+
+Also, convenience methods L</hashref2string($hashref)> and L</string2hash($string)> are provided,
+which deal with Perl hashrefs formatted as strings.
+
+See also L<HTML::Parser::Simple> and L<HTML::Parser::Simple::Reporter>.
+
+=head1 Distributions
+
+This module is available as a Unix-style distro (*.tgz).
+
+See L<http://savage.net.au/Perl-modules.html> for details.
+
+See L<http://savage.net.au/Perl-modules/html/installing-a-module.html> for
+help on unpacking and installing.
+
+=head1 Constructor and initialization
+
+new(...) returns an object of type C<HTML::Parser::Simple::Attributes>.
+
+This is the class contructor.
+
+Usage: C<< HTML::Parser::Simple::Attributes -> new >>.
+
+This method takes a hash of options.
+
+Call C<< new() >> as C<< new(option_1 => value_1, option_2 => value_2, ...) >>.
+
+Available options (each one of which is also a method):
+
+=over 4
+
+=item o a_string => $a_HTML_attribute_string
+
+This takes a string as formatted for HTML attribites.
+
+E.g.: ' height="20" width=20 '.
+
+Default: '' (the empty string).
+
+=back
 
 =head1 Methods
 
-=head2 get_attr([$name])
+=head2 a_hashref()
 
-The [] indicate an optional parameter.
+Returns a hashref of parsed attributes, if C<< parse() >> has been called.
 
-	my($attrs_ref) = $parser -> get_attr;
-	my($val)       = $parser -> get_attr('attr_name');
+Returns {} if C<< parse() >> has not been called.
 
-If you don't pass in an attribute name, returns a hash ref with the attribute names as keys and the attribute values
-as the values.
+=head2 a_string()
+
+Returns the attribute string passed to C<< new() >>, or to L<parse($attr_string)>.
+
+Returns '' (the empty string) if C<< parse() >> has not been called.
+
+'a_string' is a parameter to L</new()>. See L</Constructor and Initialization> for details.
+
+=head2 get([$name])
+
+Here, the [] indicate an optional parameter.
+
+	my($hashref) = $parser -> get;
+	my($value)   = $parser -> get('attr_name');
+
+If you do not pass in an attribute name, this returns a hashref with the attribute names as keys
+and the attribute values as the values.
 
 If you pass in an attribute name, it will return the value for just that attribute.
 
-Return undef if you supply the name of a non-existant attribute.
+Returns undef if you supply the name of a non-existant attribute.
 
-=head2 parse_attributes($attr_string)
+=head2 hashref2string($hashref)
 
-	$attr_href = $parser -> parse_attributes($attr_string);
-	$attr_href = HTML::Parser::Simple::Attributes -> parse_attributes($attr_string);
+Returns a string suitable for printing.
 
-Parses a string of HTML attributes and returns the result as a hash ref, or
-dies if the string is a valid attribute string. Attribute values may be quoted
-with double quotes or single quotes.
+Warning: The hashref is formatted as we would normally do in Perl, i.e. with commas and fat commas.
 
+	{height => 20, width => 20} is returned as 'height => 20, width => 20'
+
+This is not how HTML attributes are written.
+
+The output string can be parsed by L</string2hashref($string)>.
+
+This is a convenience method.
+
+=head2 new()
+
+This is the constructor. See L</Constructor and initialization> for details.
+
+=head2 parse($attr_string)
+
+	$attr_href = $parser -> parse($attr_string);
+
+Or
+
+	$parser    = HTML::Parser::Simple::Attributes -> new(a_string => $attr_string);
+	$attr_href = $parser -> parse;
+
+Parses a string of HTML attributes and returns the result as a hashref, or
+dies if the string is not a valid attribute string.
+
+Attribute values may be quoted with double quotes or single quotes.
 Quotes may be omitted if there are no spaces in the value.
 
-Returns an empty hashref if $attr_string is not supplied.
+Returns an empty hashref if $attr_string was not supplied to C<< new() >>, nor to C<< parse() >>.
 
-This method may also be called as a class method.
+=head2 string2hashref($string)
+
+Returns a hashref by (simplistically) parsing the string.
+
+	'height => 20, width => 20' is returned as {height => 20, width => 20}
+
+Warning: This string must have been output by L</hashref2string($hashref)>, because it deals with a
+string of hashrefs as we normally think of them in Perl, i.e. with commas and fat commas.
+
+This is not how HTML deals with a string of attributes.
+
+This is a convenience method.
 
 =head1 Author
 
 C<HTML::Parser::Simple::Attributes> was written by Mark Stosberg I<E<lt>mark@summersault.comE<gt>> in 2009.
 
-Home page: http://mark.stosberg.com/
+The code has be re-worked by Ron Savage.
+
+Home page: L<http://mark.stosberg.com/>.
 
 =head1 Copyright
 

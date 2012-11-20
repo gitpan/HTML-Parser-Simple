@@ -1,22 +1,18 @@
 #!/usr/bin/env perl
-#
-# Name:
-#    parse.html.pl.
 
 use strict;
 use warnings;
 
+use File::Spec;
+
 use HTML::Parser::Simple;
 
-# -------------------------
+# -----------------------
 
 my($p) = HTML::Parser::Simple -> new
 (
- {
-	 input_dir  => '/var/www',
-	 output_dir => '/tmp',
-	 verbose    => 1,
- }
+	input_file  => File::Spec -> catfile('data', 's.1.html'),
+	output_file => File::Spec -> catfile('data', 's.2.html'),
 );
 
-$p -> parse_file('s.1.html', 's.2.html');
+print $p -> parse_file -> result;

@@ -1,14 +1,17 @@
-use Test::More tests => 1;
 use strict;
 use warnings;
 
 use HTML::Parser::Simple::Attributes;
 
+use Test::More tests => 1;
+
+# ------------------------
+
 my($a);
 
 eval
 {
-		$a = HTML::Parser::Simple::Attributes -> parse_attributes('name="name" type=""');
+		$a = HTML::Parser::Simple::Attributes -> parse('name="name" type=""');
 };
 
 if ($@)

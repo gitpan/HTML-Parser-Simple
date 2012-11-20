@@ -1,24 +1,17 @@
 #!/usr/bin/env perl
-#
-# Name:
-#    parse.xhtml.pl.
 
 use strict;
 use warnings;
 
+use File::Spec;
+
 use HTML::Parser::Simple;
 
-# -------------------------
+# -----------------------
 
-my($p) = HTML::Parser::Simple -> new
+print HTML::Parser::Simple -> new
 (
- {
-	 input_dir  => './scripts',
-	 output_dir => './scripts',
-	 verbose    => 1,
-	 xhtml      => 1,
- }
-);
-
-# Fails:
-$p -> parse_file('91.mathml.xhtml', 'out.xhtml');
+	input_file  => File::Spec -> catfile('t', 'data', '90.xml.declaration.xhtml'),
+	output_file => File::Spec -> catfile('data', '90.xml.declaration.xml'),
+	xhtml       => 1,
+) -> parse_file -> result;
