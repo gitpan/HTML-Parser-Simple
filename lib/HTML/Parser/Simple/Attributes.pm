@@ -1,12 +1,29 @@
 package HTML::Parser::Simple::Attributes;
 
-use Moos; # Turns on strict and warnings. Provides 'has'.
+use strict;
+use warnings;
 
-has a_hashref => (default => sub{return {} });
-has a_string  => (default => sub{return ''});
-has parsed    => (default => sub{return 0});
+use Moo;
 
-our $VERSION = '2.00';
+has a_hashref =>
+(
+	default => sub{return {} },
+	is      => 'rw',
+);
+
+has a_string =>
+(
+	default => sub{return ''},
+	is      => 'rw',
+);
+
+has parsed =>
+(
+	default => sub{return 0},
+	is      => 'rw',
+);
+
+our $VERSION = '2.01';
 
 # -----------------------------------------------
 
@@ -90,7 +107,7 @@ sub string2hashref
 	{
 		if ($s =~ m/^\{\s*([^}]*)\}$/)
 		{
-			my(@attr) = map{split(/\s*=>\s*/)} split(/\s*,\s*/, $1);
+			my(@attr) = map{s/([\"\'])(.*)\1/$2/; $_} map{split(/\s*=>\s*/)} split(/\s*,\s*/, $1);
 			$result   = {@attr} if (@attr);
 		}
 		else
